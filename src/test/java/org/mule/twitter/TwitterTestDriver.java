@@ -14,14 +14,17 @@
 
 package org.mule.twitter;
 
+import org.mule.api.callback.SourceCallback;
+import org.mule.tck.AbstractMuleTestCase;
+
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Map;
 
-import org.mule.api.callback.SourceCallback;
-import org.mule.tck.AbstractMuleTestCase;
+import org.junit.Test;
 
 import twitter4j.Status;
+import twitter4j.TwitterException;
 
 public class TwitterTestDriver extends AbstractMuleTestCase
 {
@@ -174,4 +177,10 @@ public class TwitterTestDriver extends AbstractMuleTestCase
         connector.updateStatus("Foobar " + new Date(), -1, null, null);
         Thread.sleep(10000);
     }
+    
+    @Test
+    public void testSendDirectMessageInvalidScreen() throws TwitterException {
+        connector.sendDirectMessageByScreenName("zaubertest4", "Hi zaubertest4 " + new Date().getTime());
+    }
+
 }

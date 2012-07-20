@@ -23,14 +23,7 @@ public class HttpClientImpl implements HttpClient
 
     public HttpClientImpl(HttpClientConfiguration conf)
     {
-        if (HttpClientHiddenConstructionArgument.useMule())
-        {
-            client = new MuleHttpClient(conf);
-        }
-        else
-        {
-            client = new twitter4j.internal.http.HttpClientImpl(conf);
-        }
+        client = new twitter4j.internal.http.HttpClientImpl(conf);
     }
 
     @Override
