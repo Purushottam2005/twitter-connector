@@ -67,6 +67,19 @@
             <type>jar</type>
             <scope>compile</scope>
         </dependency>
+        <dependency>
+              <groupId>eclipse</groupId>
+              <artifactId>eclipse-runtime</artifactId>
+              <version>2.1.0</version>
+              <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <artifactId>signpost-core</artifactId>
+            <groupId>oauth.signpost</groupId>
+            <version>1.2.1.2</version>
+            <scope>compile</scope>
+        </dependency>
+
     </dependencies>
 
     <repositories>
