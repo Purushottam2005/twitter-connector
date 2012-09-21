@@ -18,7 +18,9 @@
                           http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/3.2/mule.xsd
                           http://www.mulesoft.org/schema/mule/twitter http://www.mulesoft.org/schema/mule/twitter/2.4/mule-twitter.xsd">
 
-    <twitter:config consumerKey="${twitter.consumer.key}" consumerSecret="${twitter.consumer.secret}"/>
+    <twitter:config consumerKey="${twitter.consumer.key}" consumerSecret="${twitter.consumer.secret}">
+      <twitter:oauth-callback-config domain="localhost" remotePort="8081" localPort="8081" />
+    </twitter:config>
 
     <flow name="Search">
         <twitter:search query="#[payload]"/>

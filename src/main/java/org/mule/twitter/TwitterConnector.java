@@ -8,23 +8,37 @@
 
 package org.mule.twitter;
 
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+
+import javax.annotation.PostConstruct;
+import javax.inject.Inject;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.UnhandledException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.mule.api.MuleContext;
+import org.mule.api.MuleMessage;
 import org.mule.api.annotations.Configurable;
-import org.mule.api.annotations.Module;
+import org.mule.api.annotations.Connector;
 import org.mule.api.annotations.Processor;
 import org.mule.api.annotations.Source;
 import org.mule.api.annotations.display.FriendlyName;
 import org.mule.api.annotations.display.Password;
 import org.mule.api.annotations.display.Placement;
+import org.mule.api.annotations.oauth.OAuth;
+import org.mule.api.annotations.oauth.OAuthAccessToken;
+import org.mule.api.annotations.oauth.OAuthAccessTokenSecret;
+import org.mule.api.annotations.oauth.OAuthConsumerKey;
+import org.mule.api.annotations.oauth.OAuthConsumerSecret;
+import org.mule.api.annotations.oauth.OAuthPostAuthorization;
+import org.mule.api.annotations.oauth.OAuthProtected;
 import org.mule.api.annotations.param.Default;
 import org.mule.api.annotations.param.Optional;
 import org.mule.api.callback.SourceCallback;
-import org.mule.api.context.MuleContextAware;
 import org.mule.twitter.UserEvent.EventType;
+
 import twitter4j.DirectMessage;
 import twitter4j.FilterQuery;
 import twitter4j.GeoLocation;
@@ -55,54 +69,53 @@ import twitter4j.conf.ConfigurationBuilder;
 import twitter4j.internal.http.alternative.HttpClientHiddenConstructionArgument;
 import twitter4j.internal.http.alternative.MuleHttpClient;
 
-import javax.annotation.PostConstruct;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-
 /**
  * Twitter is an online social networking service and microblogging service that enables its users to send and read
  * text-based posts of up to 140 characters, known as "tweets".
  *
  * @author MuleSoft, Inc.
  */
-@Module(name = "twitter", schemaVersion = "2.4", description = "Twitter Integration", friendlyName = "Twitter")
-public class TwitterConnector implements MuleContextAware {
+@Connector(name = "twitter", schemaVersion = "2.4", description = "Twitter Integration", friendlyName = "Twitter")
+@OAuth(accessTokenUrl = "https://api.twitter.com/oauth/access_token",
+       authorizationUrl = "https://api.twitter.com/oauth/authorize",
+       requestTokenUrl = "https://api.twitter.com/oauth/request_token")
+public class TwitterConnector {
 
     private static final String STREAM_BASE_URL = "https://stream.twitter.com/1/";
     private static final String SITE_STREAM_BASE_URL = "https://sitestream.twitter.com/2b/";
 
     protected transient Log logger = LogFactory.getLog(getClass());
+    private boolean contextAndOAuthSet = false;
 
     private Twitter twitter;
 
     private TwitterStream stream;
-
+    
     /**
      * The consumer key used by this application
-     */
+     */    
     @Configurable
+    @OAuthConsumerKey
     private String consumerKey;
 
     /**
      * The consumer key secret by this application
      */
     @Configurable
+    @OAuthConsumerSecret
     private String consumerSecret;
 
     /**
      * The access key provided by Twitter
      */
-    @Optional
-    @Configurable
-    private String accessKey;
+    @OAuthAccessToken
+    private String accessToken;
 
     /**
      * The access secret provided by Twitter
      */
-    @Optional
-    @Configurable
-    private String accessSecret;
+    @OAuthAccessTokenSecret
+    private String accessTokenSecret;
 
     /**
      * Whether to use SSL in API calls to Twitter
@@ -147,7 +160,7 @@ public class TwitterConnector implements MuleContextAware {
     @Placement(group = "Proxy settings", tab = "Proxy")
     @Password
     private String proxyPassword;
-
+    
     @PostConstruct
     public void init() {
         ConfigurationBuilder cb = new ConfigurationBuilder();
@@ -161,11 +174,15 @@ public class TwitterConnector implements MuleContextAware {
         twitter = new TwitterFactory(cb.build()).getInstance();
 
         twitter.setOAuthConsumer(consumerKey, consumerSecret);
-        if (accessKey != null) {
-            twitter.setOAuthAccessToken(new AccessToken(accessKey, accessSecret));
+        
+        //Only for testing
+        if(StringUtils.isNotEmpty(accessToken))
+        {
+        	twitter.setOAuthAccessToken(new AccessToken(accessToken, accessTokenSecret));
+        	contextAndOAuthSet = true;
         }
     }
-
+    
     /**
      * Returns tweets that match a specified query.
      * <p/>
@@ -173,6 +190,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:search}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param query The search query.
      * @param lang Restricts tweets to the given language, given by an <a href="http://en.wikipedia.org/wiki/ISO_639-1">ISO 639-1 code</a>
      * @param locale Specify the language of the query you are sending (only ja is currently effective). This is intended for language-specific clients and the default should work in the majority of cases.
@@ -190,7 +208,10 @@ public class TwitterConnector implements MuleContextAware {
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public QueryResult search(String query,
+    @OAuthProtected
+    @Inject
+    public QueryResult search(MuleMessage muleMessage,
+    						  String query,
                               @Optional String lang,
                               @Optional String locale,
                               @Optional Long maxId,
@@ -200,9 +221,11 @@ public class TwitterConnector implements MuleContextAware {
                               @Optional Long sinceId,
                               @Optional String geocode,
                               @Optional String radius,
-                              @Default (value = Query.MILES) @Optional String unit,
+                              @Default (value = Query.MILES)
+    						  @Optional String unit,
                               @Optional String until,
                               @Optional String resultType) throws TwitterException {
+    	setUpContext(muleMessage);
         final Query q = new Query(query);
         
         if (lang != null)
@@ -259,6 +282,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getPublicTimeline}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @return list of {@link Status} of the Public Timeline
      * @throws twitter4j.TwitterException when Twitter service or network is
      *                                    unavailable
@@ -266,7 +290,10 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/public_timeline | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<Status> getPublicTimeline() throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getPublicTimeline(MuleMessage muleMessage) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getPublicTimeline();
     }
 
@@ -283,6 +310,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getHomeTimeline}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param page    Specifies the page of results to retrieve.
      * @param count   Specifies the number of records to retrieve. Must be less than or equal to 200.
      * @param sinceId Returns results with an ID greater than (that is, more recent than) the specified ID.
@@ -295,10 +323,14 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/home_timeline | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<Status> getHomeTimeline(@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getHomeTimeline(MuleMessage muleMessage,
+    											@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                 @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                 @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getHomeTimeline(getPaging(page, count, sinceId));
     }
 
@@ -316,6 +348,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getUserTimelineByScreenName}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param screenName The screen name of the user for whom to return results for
      * @param page       Specifies the page of results to retrieve.
      * @param count      Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
@@ -330,11 +363,15 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/user_timeline | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<Status> getUserTimelineByScreenName(String screenName,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getUserTimelineByScreenName(MuleMessage muleMessage,
+    														String screenName,
                                                             @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                             @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                             @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getUserTimeline(screenName, getPaging(page, count, sinceId));
     }
 
@@ -352,6 +389,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getUserTimelineByUserId}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param userId  specifies the ID of the user for whom to return the user_timeline
      * @param page    Specifies the page of results to retrieve.
      * @param count   Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
@@ -366,11 +404,15 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/user_timeline | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<Status> getUserTimelineByUserId(long userId,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getUserTimelineByUserId(MuleMessage muleMessage,
+    													long userId,
                                                         @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                         @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                         @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getUserTimeline(userId, getPaging(page, count, sinceId));
     }
 
@@ -396,6 +438,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getUserTimeline}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param page    Specifies the page of results to retrieve.
      * @param count   Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
      *                best thought of as a limit to the number of tweets to return because suspended or deleted content is removed
@@ -409,10 +452,14 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/user_timeline | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<Status> getUserTimeline(@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getUserTimeline(MuleMessage muleMessage,
+    											@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                 @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                 @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getUserTimeline(getPaging(page, count, sinceId));
     }
 
@@ -423,6 +470,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getMentions}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param page    Specifies the page of results to retrieve.
      * @param count   Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
      *                best thought of as a limit to the number of tweets to return because suspended or deleted content is removed
@@ -436,10 +484,14 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/mentions | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<Status> getMentions(@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getMentions(MuleMessage muleMessage,
+    										@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                             @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                             @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getMentions(getPaging(page, count, sinceId));
     }
 
@@ -449,6 +501,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweetedByMe}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param page    Specifies the page of results to retrieve.
      * @param count   Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
      *                best thought of as a limit to the number of tweets to return because suspended or deleted content is removed
@@ -462,10 +515,14 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/retweeted_by_me | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<Status> getRetweetedByMe(@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getRetweetedByMe(MuleMessage muleMessage,
+    											 @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                  @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                  @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweetedByMe(getPaging(page, count, sinceId));
     }
 
@@ -476,6 +533,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweetedToMe}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param page    Specifies the page of results to retrieve.
      * @param count   Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
      *                best thought of as a limit to the number of tweets to return because suspended or deleted content is removed
@@ -490,10 +548,14 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/retweeted_to_me | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<Status> getRetweetedToMe(@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getRetweetedToMe(MuleMessage muleMessage,
+    											 @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                  @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                  @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweetedToMe(getPaging(page, count, sinceId));
     }
 
@@ -504,6 +566,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweetsOfMe}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param page    Specifies the page of results to retrieve.
      * @param count   Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
      *                best thought of as a limit to the number of tweets to return because suspended or deleted content is removed
@@ -517,10 +580,14 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/retweets_of_me | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<Status> getRetweetsOfMe(@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getRetweetsOfMe(MuleMessage muleMessage,
+    											@Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                 @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                 @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweetsOfMe(getPaging(page, count, sinceId));
     }
 
@@ -534,6 +601,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweetedToUserByScreenName}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param screenName the user to view
      * @param page       Specifies the page of results to retrieve.
      * @param count      Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
@@ -549,11 +617,15 @@ public class TwitterConnector implements MuleContextAware {
      *      and the API - Twitter API Announcements | Google Group</a>
      */
     @Processor
-    public ResponseList<Status> getRetweetedToUserByScreenName(String screenName,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getRetweetedToUserByScreenName(MuleMessage muleMessage,
+    														   String screenName,
                                                                @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                                @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                                @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweetedToUser(screenName, getPaging(page, count, sinceId));
     }
 
@@ -567,6 +639,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweetedToUserByUserId}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param userId  the user to view
      * @param page    Specifies the page of results to retrieve.
      * @param count   Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
@@ -582,11 +655,15 @@ public class TwitterConnector implements MuleContextAware {
      *      and the API - Twitter API Announcements | Google Group</a>
      */
     @Processor
-    public ResponseList<Status> getRetweetedToUserByUserId(long userId,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getRetweetedToUserByUserId(MuleMessage muleMessage,
+    													   long userId,
                                                            @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                            @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                            @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweetedToUser(userId, getPaging(page, count, sinceId));
     }
 
@@ -600,6 +677,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweetedByUserByScreenName}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param screenName the user to view
      * @param page       Specifies the page of results to retrieve.
      * @param count      Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
@@ -615,11 +693,15 @@ public class TwitterConnector implements MuleContextAware {
      *      and the API - Twitter API Announcements | Google Group</a>
      */
     @Processor
-    public ResponseList<Status> getRetweetedByUserByScreenName(String screenName,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getRetweetedByUserByScreenName(MuleMessage muleMessage,
+    														   String screenName,
                                                                @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                                @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                                @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweetedByUser(screenName, getPaging(page, count, sinceId));
     }
 
@@ -633,6 +715,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweetedByUserByUserId}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param userId  the user to view
      * @param page    Specifies the page of results to retrieve.
      * @param count   Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
@@ -648,11 +731,14 @@ public class TwitterConnector implements MuleContextAware {
      *      and the API - Twitter API Announcements | Google Group</a>
      */
     @Processor
-    public ResponseList<Status> getRetweetedByUserByUserId(long userId,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getRetweetedByUserByUserId(MuleMessage muleMessage, long userId,
                                                            @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                                            @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                            @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweetedByUser(userId, getPaging(page, count, sinceId));
     }
 
@@ -663,6 +749,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:showStatus}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param id the numerical ID of the status you're trying to retrieve
      * @return a single {@link Status}
      * @throws twitter4j.TwitterException when Twitter service or network is unavailable
@@ -670,7 +757,10 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/show/:id | dev.twitter.com</a>
      */
     @Processor
-    public Status showStatus(long id) throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public Status showStatus(MuleMessage muleMessage, long id) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.showStatus(id);
     }
 
@@ -679,15 +769,19 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:showUser}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @return a {@link User} object
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public User showUser() throws TwitterException {
-        return twitter.showUser(twitter.getId());
+    @OAuthProtected
+    @Inject
+    public User showUser(MuleMessage muleMessage) throws TwitterException {
+    	setUpContext(muleMessage);
+    	return twitter.showUser(twitter.getId());
     }
 
-    /**
+	/**
      * Updates the authenticating user's status. A status update with text identical
      * to the authenticating user's text identical to the authenticating user's
      * current status will be ignored to prevent duplicates. <br>
@@ -695,6 +789,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:updateStatus}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param status    the text of your status update
      * @param inReplyTo The ID of an existing status that the update is in reply to.
      * @param latitude  The latitude of the location this tweet refers to. This parameter will be ignored unless it is
@@ -708,10 +803,13 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/update | dev.twitter.com</a>
      */
     @Processor
-    public Status updateStatus(String status,
+    @OAuthProtected
+    @Inject
+    public Status updateStatus(MuleMessage muleMessage, String status,
                                @Default(value = "-1") @Optional long inReplyTo,
                                @Placement(group = "Coordinates") @Optional Double latitude,
                                @Placement(group = "Coordinates") @Optional Double longitude) throws TwitterException {
+    	setUpContext(muleMessage);
         StatusUpdate update = new StatusUpdate(status);
         if (inReplyTo > 0) {
             update.setInReplyToStatusId(inReplyTo);
@@ -738,6 +836,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:destroyStatus}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param statusId The ID of the status to destroy.
      * @return the deleted {@link Status}
      * @throws TwitterException when Twitter service or network is unavailable
@@ -745,7 +844,10 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/destroy/:id | dev.twitter.com</a>
      */
     @Processor
-    public Status destroyStatus(long statusId) throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public Status destroyStatus(MuleMessage muleMessage, long statusId) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.destroyStatus(statusId);
     }
 
@@ -755,6 +857,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:retweetStatus}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param statusId The ID of the status to retweet.
      * @return the retweeted {@link Status}
      * @throws TwitterException when Twitter service or network is unavailable
@@ -762,7 +865,10 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/retweet/:id | dev.twitter.com</a>
      */
     @Processor
-    public Status retweetStatus(long statusId) throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public Status retweetStatus(MuleMessage muleMessage, long statusId) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.retweetStatus(statusId);
     }
 
@@ -772,6 +878,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweets}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param statusId The numerical ID of the tweet you want the retweets of.
      * @return the retweets ({@link Status}) of a given tweet
      * @throws TwitterException when Twitter service or network is unavailable
@@ -780,7 +887,10 @@ public class TwitterConnector implements MuleContextAware {
      * @since Twitter4J 2.0.10
      */
     @Processor
-    public ResponseList<Status> getRetweets(long statusId) throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public ResponseList<Status> getRetweets(MuleMessage muleMessage, long statusId) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweets(statusId);
     }
 
@@ -790,6 +900,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweetedBy}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param statusId The ID of the status you want to get retweeters of
      * @param page     Specifies the page of results to retrieve.
      * @param count    Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
@@ -804,11 +915,14 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/:id/retweeted_by | dev.twitter.com</a>
      */
     @Processor
-    public ResponseList<User> getRetweetedBy(long statusId,
+    @OAuthProtected
+    @Inject
+    public ResponseList<User> getRetweetedBy(MuleMessage muleMessage, long statusId,
                                              @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                              @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                              @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweetedBy(statusId, getPaging(page, count, sinceId));
     }
 
@@ -819,6 +933,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getRetweetedByIDs}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param statusId The ID of the status you want to get retweeters of
      * @param page     Specifies the page of results to retrieve.
      * @param count    Specifies the number of tweets to try and retrieve, up to a maximum of 200. The value of count is
@@ -834,10 +949,13 @@ public class TwitterConnector implements MuleContextAware {
      *      statuses/:id/retweeted_by/ids | dev.twitter.com</a>
      */
     @Processor(friendlyName = "Get retweeted by IDs")
-    public IDs getRetweetedByIDs(long statusId,
+    @OAuthProtected
+    @Inject
+    public IDs getRetweetedByIDs(MuleMessage muleMessage, long statusId,
                                  @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                  @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                  @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getRetweetedByIDs(statusId, getPaging(page, count, sinceId));
     }
 
@@ -848,11 +966,15 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:setOauthVerifier}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param oauthVerifier The OAuth verifier code from Twitter.
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public void setOauthVerifier(String oauthVerifier) throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public void setOauthVerifier(MuleMessage muleMessage, String oauthVerifier) throws TwitterException {
+    	setUpContext(muleMessage);
         AccessToken accessToken = twitter.getOAuthAccessToken(oauthVerifier);
         logger.info("Got OAuth access tokens. Access token:" + accessToken.getToken()
                 + " Access token secret:" + accessToken.getTokenSecret());
@@ -863,12 +985,16 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:requestAuthorization}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param callbackUrl the url to be requested when the user authorizes this app
      * @return The user authorization URL.
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public String requestAuthorization(@Optional String callbackUrl) throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public String requestAuthorization(MuleMessage muleMessage, @Optional String callbackUrl) throws TwitterException {
+    	setUpContext(muleMessage);
         RequestToken token = twitter.getOAuthRequestToken(callbackUrl);
         return token.getAuthorizationURL();
     }
@@ -886,6 +1012,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:reverseGeoCode}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param latitude  latitude coordinate. Mandatory if ip is not specified
      * @param longitude longitude coordinate.
      * @param ip        the ip. Mandatory if coordinates are not specified
@@ -893,9 +1020,13 @@ public class TwitterConnector implements MuleContextAware {
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public ResponseList<Place> reverseGeoCode(@Placement(group = "Coordinates") @Optional Double latitude,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Place> reverseGeoCode(MuleMessage muleMessage, 
+    										  @Placement(group = "Coordinates") @Optional Double latitude,
                                               @Placement(group = "Coordinates") @Optional Double longitude,
                                               @Optional String ip) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.reverseGeoCode(createQuery(latitude, longitude, ip));
     }
 
@@ -906,6 +1037,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:searchPlaces}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param latitude  latitude coordinate. Mandatory if ip is not specified
      * @param longitude longitude coordinate.
      * @param ip        the ip. Mandatory if coordinates are not specified
@@ -913,9 +1045,13 @@ public class TwitterConnector implements MuleContextAware {
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public ResponseList<Place> searchPlaces(@Placement(group = "Coordinates") @Optional Double latitude,
+    @OAuthProtected
+    @Inject
+    public ResponseList<Place> searchPlaces(MuleMessage muleMessage, 
+    										@Placement(group = "Coordinates") @Optional Double latitude,
                                             @Placement(group = "Coordinates") @Optional Double longitude,
                                             @Optional String ip) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.searchPlaces(createQuery(latitude, longitude, ip));
     }
 
@@ -933,12 +1069,16 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getGeoDetails}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param id The ID of the location to query about.
      * @return a {@link Place}
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public Place getGeoDetails(String id) throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public Place getGeoDetails(MuleMessage muleMessage, String id) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getGeoDetails(id);
     }
 
@@ -947,6 +1087,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:createPlace}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param placeName            The placeName a place is known as.
      * @param containedWithin The place_id within which the new place can be found.
      *                        Try and be as close as possible with the containing place. For
@@ -963,12 +1104,16 @@ public class TwitterConnector implements MuleContextAware {
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public Place createPlace(String placeName,
+    @OAuthProtected
+    @Inject
+    public Place createPlace(MuleMessage muleMessage,
+    						 String placeName,
                              String containedWithin,
                              String token,
                              @Placement(group = "Coordinates") Double latitude,
                              @Placement(group = "Coordinates") Double longitude,
                              @Optional String streetAddress) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.createPlace(placeName, containedWithin, token, new GeoLocation(latitude, longitude),
                 streetAddress);
     }
@@ -984,16 +1129,20 @@ public class TwitterConnector implements MuleContextAware {
      *
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getAvailableTrends}
      * 
+     * @param muleMessage The current mule message for context retrieval
      * @param latitude the latitude
      * @param longitude the longitude
      * @return the {@link Location}s
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public ResponseList<Location> getAvailableTrends(@Optional Double latitude, 
+    @OAuthProtected
+    @Inject
+    public ResponseList<Location> getAvailableTrends(MuleMessage muleMessage,
+    												 @Optional Double latitude, 
                                                      @Optional Double longitude) 
             throws TwitterException {
-        
+    	setUpContext(muleMessage);
         if(latitude != null && longitude != null) {
             return twitter.getAvailableTrends(new GeoLocation(latitude, longitude));
         }
@@ -1012,13 +1161,17 @@ public class TwitterConnector implements MuleContextAware {
      *
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getLocationTrends}
      * 
+     * @param muleMessage The current mule message for context retrieval
      * @param woeid The WOEID of the location to be querying for
      * @return trends
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public Trends getLocationTrends(@Optional @Default(value = "1") int woeid) 
+    @OAuthProtected
+    @Inject
+    public Trends getLocationTrends(MuleMessage muleMessage, @Optional @Default(value = "1") int woeid) 
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getLocationTrends(woeid);
     }
     /**
@@ -1026,6 +1179,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getDailyTrends}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param date            starting date of daily trends. If no date is specified, current
      *                        date is used
      * @param excludeHashTags whether hashtags should be excluded
@@ -1033,9 +1187,12 @@ public class TwitterConnector implements MuleContextAware {
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public List<Trends> getDailyTrends(@Optional Date date,
+    @OAuthProtected
+    @Inject
+    public List<Trends> getDailyTrends(MuleMessage muleMessage, @Optional Date date,
                                        @Optional @Default("false") boolean excludeHashTags)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getDailyTrends(date, excludeHashTags);
     }
 
@@ -1044,6 +1201,7 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getWeeklyTrends}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param date            starting date of daily trends. If no date is specified, current
      *                        date is used
      * @param excludeHashTags if all hashtags should be removed from the trends list.
@@ -1051,9 +1209,12 @@ public class TwitterConnector implements MuleContextAware {
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public List<Trends> getWeeklyTrends(@Optional Date date,
+    @OAuthProtected
+    @Inject
+    public List<Trends> getWeeklyTrends(MuleMessage muleMessage, @Optional Date date,
                                         @Optional @Default("false") boolean excludeHashTags)
             throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.getWeeklyTrends(date, excludeHashTags);
     }
 
@@ -1345,13 +1506,17 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:sendDirectMessageByScreenName}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param screenName The screen name of the user to whom send the direct message
      * @param message    The text of your direct message
      * @return the {@link DirectMessage}
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public DirectMessage sendDirectMessageByScreenName(String screenName, String message) throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public DirectMessage sendDirectMessageByScreenName(MuleMessage muleMessage, String screenName, String message) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.sendDirectMessage(screenName, message);
     }
 
@@ -1362,16 +1527,20 @@ public class TwitterConnector implements MuleContextAware {
      * <p/>
      * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:sendDirectMessageByUserId}
      *
+     * @param muleMessage The current mule message for context retrieval
      * @param userId  The user ID of the user to whom send the direct message
      * @param message The text of your direct message
      * @return the {@link DirectMessage}
      * @throws TwitterException when Twitter service or network is unavailable
      */
     @Processor
-    public DirectMessage sendDirectMessageByUserId(long userId, String message) throws TwitterException {
+    @OAuthProtected
+    @Inject
+    public DirectMessage sendDirectMessageByUserId(MuleMessage muleMessage, long userId, String message) throws TwitterException {
+    	setUpContext(muleMessage);
         return twitter.sendDirectMessage(userId, message);
     }
-
+    
     private void initStream() {
         if (stream != null) {
             throw new IllegalStateException("Only one stream can be consumed per twitter account");
@@ -1419,8 +1588,8 @@ public class TwitterConnector implements MuleContextAware {
                 .setHttpProxyUser(proxyUsername)
                 .setHttpProxyPassword(proxyPassword);
 
-        if (accessKey != null) {
-            cb.setOAuthAccessToken(accessKey).setOAuthAccessTokenSecret(accessSecret);
+        if (accessToken != null) {
+            cb.setOAuthAccessToken(accessToken).setOAuthAccessTokenSecret(accessTokenSecret);
         }
 
         HttpClientHiddenConstructionArgument.setUseMule(false);
@@ -1437,7 +1606,21 @@ public class TwitterConnector implements MuleContextAware {
         }
         return ls;
     }
-
+    
+    private void setUpContext(MuleMessage muleMessage)
+    {
+    	if (!contextAndOAuthSet)
+    	{
+    		if (muleMessage == null)
+    		{
+    			throw new IllegalArgumentException("The context could not be injected");
+    		}
+    		MuleHttpClient.setMuleContext(muleMessage.getMuleContext());
+    		twitter.setOAuthAccessToken(new AccessToken(accessToken, accessTokenSecret));
+    		contextAndOAuthSet = true;
+    	}
+    }
+    
     public Twitter getTwitterClient() {
         return twitter;
     }
@@ -1450,12 +1633,12 @@ public class TwitterConnector implements MuleContextAware {
         this.useSSL = useSSL;
     }
 
-    public void setAccessKey(String accessToken) {
-        this.accessKey = accessToken;
+    public void setAccessToken(String accessToken) {
+        this.accessToken = accessToken;
     }
 
-    public void setAccessSecret(String accessTokenSecret) {
-        this.accessSecret = accessTokenSecret;
+    public void setAccessTokenSecret(String accessTokenSecret) {
+        this.accessTokenSecret = accessTokenSecret;
     }
 
     public void setConsumerKey(String consumerKey) {
@@ -1464,11 +1647,6 @@ public class TwitterConnector implements MuleContextAware {
 
     public void setConsumerSecret(String consumerSecret) {
         this.consumerSecret = consumerSecret;
-    }
-
-    @Override
-    public void setMuleContext(MuleContext context) {
-        MuleHttpClient.setMuleContext(context);
     }
 
     public void setProxyHost(String proxyHost) {
@@ -1495,12 +1673,12 @@ public class TwitterConnector implements MuleContextAware {
         return consumerSecret;
     }
 
-    public String getAccessKey() {
-        return accessKey;
+    public String getAccessToken() {
+        return accessToken;
     }
 
-    public String getAccessSecret() {
-        return accessSecret;
+    public String getAccessTokenSecret() {
+        return accessTokenSecret;
     }
 
     public boolean isUseSSL() {
@@ -1522,8 +1700,8 @@ public class TwitterConnector implements MuleContextAware {
     public String getProxyPassword() {
         return proxyPassword;
     }
-
-    static final class SoftCallback implements SourceCallback {
+    
+   static final class SoftCallback implements SourceCallback {
         private final SourceCallback callback;
 
         public SoftCallback(SourceCallback callback) {
@@ -1547,7 +1725,7 @@ public class TwitterConnector implements MuleContextAware {
                 throw new UnhandledException(e);
             }
         }
-
+        
         @Override
         public Object process(Object payload, Map<String, Object> properties) throws Exception {
             try {
