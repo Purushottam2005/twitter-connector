@@ -32,7 +32,6 @@ import org.mule.api.annotations.oauth.OAuthAccessToken;
 import org.mule.api.annotations.oauth.OAuthAccessTokenSecret;
 import org.mule.api.annotations.oauth.OAuthConsumerKey;
 import org.mule.api.annotations.oauth.OAuthConsumerSecret;
-import org.mule.api.annotations.oauth.OAuthPostAuthorization;
 import org.mule.api.annotations.oauth.OAuthProtected;
 import org.mule.api.annotations.param.Default;
 import org.mule.api.annotations.param.Optional;
@@ -116,7 +115,7 @@ public class TwitterConnector {
      */
     @OAuthAccessTokenSecret
     private String accessTokenSecret;
-
+    
     /**
      * Whether to use SSL in API calls to Twitter
      */
@@ -125,7 +124,7 @@ public class TwitterConnector {
     @Default("true")
     @FriendlyName("Use SSL")
     private boolean useSSL;
-
+    
     /**
      * Proxy host
      */
@@ -133,7 +132,7 @@ public class TwitterConnector {
     @Optional
     @Placement(group = "Proxy settings", tab = "Proxy")
     private String proxyHost;
-
+    
     /**
      * Proxy port
      */
@@ -142,7 +141,7 @@ public class TwitterConnector {
     @Default("-1")
     @Placement(group = "Proxy settings", tab = "Proxy")
     private int proxyPort;
-
+    
     /**
      *
      * Proxy username
@@ -151,7 +150,7 @@ public class TwitterConnector {
     @Optional
     @Placement(group = "Proxy settings", tab = "Proxy")
     private String proxyUsername;
-
+    
     /**
      * Proxy password
      */
@@ -169,17 +168,16 @@ public class TwitterConnector {
         cb.setHttpProxyPort(proxyPort);
         cb.setHttpProxyUser(proxyUsername);
         cb.setHttpProxyPassword(proxyPassword);
-
+        
         HttpClientHiddenConstructionArgument.setUseMule(true);
         twitter = new TwitterFactory(cb.build()).getInstance();
-
         twitter.setOAuthConsumer(consumerKey, consumerSecret);
         
         //Only for testing
         if(StringUtils.isNotEmpty(accessToken))
         {
-        	twitter.setOAuthAccessToken(new AccessToken(accessToken, accessTokenSecret));
-        	contextAndOAuthSet = true;
+               twitter.setOAuthAccessToken(new AccessToken(accessToken, accessTokenSecret));
+               contextAndOAuthSet = true;
         }
     }
     
@@ -221,11 +219,10 @@ public class TwitterConnector {
                               @Optional Long sinceId,
                               @Optional String geocode,
                               @Optional String radius,
-                              @Default (value = Query.MILES)
-    						  @Optional String unit,
+                              @Default (value = Query.MILES) @Optional String unit,
                               @Optional String until,
                               @Optional String resultType) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         final Query q = new Query(query);
         
         if (lang != null)
@@ -275,29 +272,6 @@ public class TwitterConnector {
     }
 
     /**
-     * Returns the 20 most recent statuses from non-protected users who have set a
-     * custom user icon. The public timeline is cached for 60 seconds and requesting
-     * it more often than that is unproductive and a waste of resources. <br>
-     * This method calls http://api.twitter.com/1/statuses/public_timeline
-     * <p/>
-     * {@sample.xml ../../../doc/twitter-connector.xml.sample twitter:getPublicTimeline}
-     *
-     * @param muleMessage The current mule message for context retrieval
-     * @return list of {@link Status} of the Public Timeline
-     * @throws twitter4j.TwitterException when Twitter service or network is
-     *                                    unavailable
-     * @see <a href="http://dev.twitter.com/doc/get/statuses/public_timeline">GET
-     *      statuses/public_timeline | dev.twitter.com</a>
-     */
-    @Processor
-    @OAuthProtected
-    @Inject
-    public ResponseList<Status> getPublicTimeline(MuleMessage muleMessage) throws TwitterException {
-    	setUpContext(muleMessage);
-        return twitter.getPublicTimeline();
-    }
-
-    /**
      * Returns the 20 most recent statuses, including retweets, posted by the
      * authenticating user and that user's friends. This is the equivalent of
      * /timeline/home on the Web.<br>
@@ -330,7 +304,7 @@ public class TwitterConnector {
                                                 @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                 @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getHomeTimeline(getPaging(page, count, sinceId));
     }
 
@@ -371,7 +345,7 @@ public class TwitterConnector {
                                                             @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                             @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getUserTimeline(screenName, getPaging(page, count, sinceId));
     }
 
@@ -412,7 +386,7 @@ public class TwitterConnector {
                                                         @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                         @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getUserTimeline(userId, getPaging(page, count, sinceId));
     }
 
@@ -459,7 +433,7 @@ public class TwitterConnector {
                                                 @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                 @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getUserTimeline(getPaging(page, count, sinceId));
     }
 
@@ -491,7 +465,7 @@ public class TwitterConnector {
                                             @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                             @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getMentions(getPaging(page, count, sinceId));
     }
 
@@ -522,7 +496,7 @@ public class TwitterConnector {
                                                  @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                  @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweetedByMe(getPaging(page, count, sinceId));
     }
 
@@ -555,7 +529,7 @@ public class TwitterConnector {
                                                  @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                  @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweetedToMe(getPaging(page, count, sinceId));
     }
 
@@ -587,7 +561,7 @@ public class TwitterConnector {
                                                 @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                 @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweetsOfMe(getPaging(page, count, sinceId));
     }
 
@@ -625,7 +599,7 @@ public class TwitterConnector {
                                                                @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                                @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweetedToUser(screenName, getPaging(page, count, sinceId));
     }
 
@@ -663,7 +637,7 @@ public class TwitterConnector {
                                                            @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                            @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweetedToUser(userId, getPaging(page, count, sinceId));
     }
 
@@ -701,7 +675,7 @@ public class TwitterConnector {
                                                                @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                                @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweetedByUser(screenName, getPaging(page, count, sinceId));
     }
 
@@ -738,7 +712,7 @@ public class TwitterConnector {
                                                            @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                                            @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweetedByUser(userId, getPaging(page, count, sinceId));
     }
 
@@ -760,7 +734,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public Status showStatus(MuleMessage muleMessage, long id) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.showStatus(id);
     }
 
@@ -777,7 +751,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public User showUser(MuleMessage muleMessage) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
     	return twitter.showUser(twitter.getId());
     }
 
@@ -809,7 +783,7 @@ public class TwitterConnector {
                                @Default(value = "-1") @Optional long inReplyTo,
                                @Placement(group = "Coordinates") @Optional Double latitude,
                                @Placement(group = "Coordinates") @Optional Double longitude) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         StatusUpdate update = new StatusUpdate(status);
         if (inReplyTo > 0) {
             update.setInReplyToStatusId(inReplyTo);
@@ -847,7 +821,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public Status destroyStatus(MuleMessage muleMessage, long statusId) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.destroyStatus(statusId);
     }
 
@@ -868,7 +842,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public Status retweetStatus(MuleMessage muleMessage, long statusId) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.retweetStatus(statusId);
     }
 
@@ -890,7 +864,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public ResponseList<Status> getRetweets(MuleMessage muleMessage, long statusId) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweets(statusId);
     }
 
@@ -922,7 +896,7 @@ public class TwitterConnector {
                                              @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                              @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweetedBy(statusId, getPaging(page, count, sinceId));
     }
 
@@ -955,7 +929,7 @@ public class TwitterConnector {
                                  @Placement(group = "Pagination") @Default(value = "1") @Optional int page,
                                  @Placement(group = "Pagination") @Default(value = "100") @Optional int count,
                                  @Placement(group = "Pagination") @Default(value = "-1") @Optional long sinceId) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getRetweetedByIDs(statusId, getPaging(page, count, sinceId));
     }
 
@@ -974,7 +948,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public void setOauthVerifier(MuleMessage muleMessage, String oauthVerifier) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         AccessToken accessToken = twitter.getOAuthAccessToken(oauthVerifier);
         logger.info("Got OAuth access tokens. Access token:" + accessToken.getToken()
                 + " Access token secret:" + accessToken.getTokenSecret());
@@ -994,7 +968,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public String requestAuthorization(MuleMessage muleMessage, @Optional String callbackUrl) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         RequestToken token = twitter.getOAuthRequestToken(callbackUrl);
         return token.getAuthorizationURL();
     }
@@ -1026,7 +1000,7 @@ public class TwitterConnector {
     										  @Placement(group = "Coordinates") @Optional Double latitude,
                                               @Placement(group = "Coordinates") @Optional Double longitude,
                                               @Optional String ip) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.reverseGeoCode(createQuery(latitude, longitude, ip));
     }
 
@@ -1051,7 +1025,7 @@ public class TwitterConnector {
     										@Placement(group = "Coordinates") @Optional Double latitude,
                                             @Placement(group = "Coordinates") @Optional Double longitude,
                                             @Optional String ip) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.searchPlaces(createQuery(latitude, longitude, ip));
     }
 
@@ -1078,7 +1052,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public Place getGeoDetails(MuleMessage muleMessage, String id) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getGeoDetails(id);
     }
 
@@ -1113,7 +1087,7 @@ public class TwitterConnector {
                              @Placement(group = "Coordinates") Double latitude,
                              @Placement(group = "Coordinates") Double longitude,
                              @Optional String streetAddress) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.createPlace(placeName, containedWithin, token, new GeoLocation(latitude, longitude),
                 streetAddress);
     }
@@ -1142,7 +1116,7 @@ public class TwitterConnector {
     												 @Optional Double latitude, 
                                                      @Optional Double longitude) 
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         if(latitude != null && longitude != null) {
             return twitter.getAvailableTrends(new GeoLocation(latitude, longitude));
         }
@@ -1171,7 +1145,7 @@ public class TwitterConnector {
     @Inject
     public Trends getLocationTrends(MuleMessage muleMessage, @Optional @Default(value = "1") int woeid) 
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getLocationTrends(woeid);
     }
     /**
@@ -1192,7 +1166,7 @@ public class TwitterConnector {
     public List<Trends> getDailyTrends(MuleMessage muleMessage, @Optional Date date,
                                        @Optional @Default("false") boolean excludeHashTags)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getDailyTrends(date, excludeHashTags);
     }
 
@@ -1214,7 +1188,7 @@ public class TwitterConnector {
     public List<Trends> getWeeklyTrends(MuleMessage muleMessage, @Optional Date date,
                                         @Optional @Default("false") boolean excludeHashTags)
             throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.getWeeklyTrends(date, excludeHashTags);
     }
 
@@ -1516,7 +1490,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public DirectMessage sendDirectMessageByScreenName(MuleMessage muleMessage, String screenName, String message) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.sendDirectMessage(screenName, message);
     }
 
@@ -1537,7 +1511,7 @@ public class TwitterConnector {
     @OAuthProtected
     @Inject
     public DirectMessage sendDirectMessageByUserId(MuleMessage muleMessage, long userId, String message) throws TwitterException {
-    	setUpContext(muleMessage);
+    	ensureContextIsSetup(muleMessage);
         return twitter.sendDirectMessage(userId, message);
     }
     
@@ -1577,16 +1551,16 @@ public class TwitterConnector {
     }
 
     private TwitterStream newStream() {
-        ConfigurationBuilder cb = new ConfigurationBuilder()
-                .setUseSSL(useSSL)
-                .setOAuthConsumerKey(consumerKey)
-                .setOAuthConsumerSecret(consumerSecret)
-                .setStreamBaseURL(STREAM_BASE_URL)
-                .setSiteStreamBaseURL(SITE_STREAM_BASE_URL)
-                .setHttpProxyHost(proxyHost)
-                .setHttpProxyPort(proxyPort)
-                .setHttpProxyUser(proxyUsername)
-                .setHttpProxyPassword(proxyPassword);
+    	 ConfigurationBuilder cb = new ConfigurationBuilder()
+    	             .setUseSSL(useSSL)
+    	             .setOAuthConsumerKey(consumerKey)
+    	             .setOAuthConsumerSecret(consumerSecret)
+    	             .setStreamBaseURL(STREAM_BASE_URL)
+    	             .setSiteStreamBaseURL(SITE_STREAM_BASE_URL)
+    	             .setHttpProxyHost(proxyHost)
+    	             .setHttpProxyPort(proxyPort)
+    	             .setHttpProxyUser(proxyUsername)
+    	             .setHttpProxyPassword(proxyPassword);
 
         if (accessToken != null) {
             cb.setOAuthAccessToken(accessToken).setOAuthAccessTokenSecret(accessTokenSecret);
@@ -1607,7 +1581,7 @@ public class TwitterConnector {
         return ls;
     }
     
-    private void setUpContext(MuleMessage muleMessage)
+    private void ensureContextIsSetup(MuleMessage muleMessage)
     {
     	if (!contextAndOAuthSet)
     	{
@@ -1623,14 +1597,6 @@ public class TwitterConnector {
     
     public Twitter getTwitterClient() {
         return twitter;
-    }
-
-    public boolean getUseSSL() {
-        return useSSL;
-    }
-
-    public void setUseSSL(boolean useSSL) {
-        this.useSSL = useSSL;
     }
 
     public void setAccessToken(String accessToken) {
@@ -1649,22 +1615,6 @@ public class TwitterConnector {
         this.consumerSecret = consumerSecret;
     }
 
-    public void setProxyHost(String proxyHost) {
-        this.proxyHost = proxyHost;
-    }
-
-    public void setProxyPort(int proxyPort) {
-        this.proxyPort = proxyPort;
-    }
-
-    public void setProxyUsername(String proxyUsername) {
-        this.proxyUsername = proxyUsername;
-    }
-
-    public void setProxyPassword(String proxyPassword) {
-        this.proxyPassword = proxyPassword;
-    }
-
     public String getConsumerKey() {
         return consumerKey;
     }
@@ -1680,27 +1630,57 @@ public class TwitterConnector {
     public String getAccessTokenSecret() {
         return accessTokenSecret;
     }
-
-    public boolean isUseSSL() {
-        return useSSL;
-    }
-
-    public String getProxyHost() {
-        return proxyHost;
-    }
-
-    public int getProxyPort() {
-        return proxyPort;
-    }
-
-    public String getProxyUsername() {
-        return proxyUsername;
-    }
-
-    public String getProxyPassword() {
-        return proxyPassword;
+    
+    public void setUseSSL(boolean useSSL)
+    {
+    	this.useSSL = useSSL;
     }
     
+    public boolean getUseSSL()
+    {
+    	return this.useSSL;
+    }
+    
+    public void setProxyHost(String proxyHost) 
+    {
+	    this.proxyHost = proxyHost;
+	}
+    
+	public void setProxyPort(int proxyPort) 
+	{
+	    this.proxyPort = proxyPort;
+	}
+    	
+	public void setProxyUsername(String proxyUsername) 
+	{
+	    this.proxyUsername = proxyUsername;
+	}
+    	
+	public void setProxyPassword(String proxyPassword) 
+	{
+	    this.proxyPassword = proxyPassword;
+	}
+	
+	public String getProxyHost() 
+	{
+		return proxyHost;
+	}
+	
+	public int getProxyPort() 
+	{
+		return proxyPort;
+	}
+	
+	public String getProxyUsername()
+	{
+		return this.proxyUsername;
+	}
+	
+	public String getProxyPassword()
+	{
+		return this.proxyPassword;
+	}
+
    static final class SoftCallback implements SourceCallback {
         private final SourceCallback callback;
 

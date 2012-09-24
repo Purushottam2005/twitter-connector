@@ -2,10 +2,6 @@
         <twitter:search query="#[payload]"/>
 <!-- END_INCLUDE(twitter:search) -->
 
-<!-- BEGIN_INCLUDE(twitter:getPublicTimeline) -->
-        <twitter:get-public-timeline/>
-<!-- END_INCLUDE(twitter:getPublicTimeline) -->
-
 <!-- BEGIN_INCLUDE(twitter:getHomeTimeline) -->
         <twitter:get-home-timeline/>
 <!-- END_INCLUDE(twitter:getHomeTimeline) -->
