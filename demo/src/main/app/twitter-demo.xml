@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:twitter="http://www.mulesoft.org/schema/mule/twitter" xmlns:context="http://www.springframework.org/schema/context" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:core="http://www.mulesoft.org/schema/mule/core" version="CE-3.3.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/twitter http://www.mulesoft.org/schema/mule/twitter/2.4/mule-twitter.xsd 
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd 
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd ">
+    <twitter:config name="Twitter" consumerKey="${consumerKey}" consumerSecret="${consumerSecret}" doc:name="Twitter"/>
+    <context:property-placeholder location="mule.properties"/>
+    <flow name="twitter-demoFlow1" doc:name="twitter-demoFlow1">
+        <http:inbound-endpoint exchange-pattern="request-response" host="localhost" port="8081" path="twitter-test" doc:name="HTTP"/>
+        <twitter:show-user config-ref="Twitter" doc:name="Show User"/>
+        <logger message="The user #[payload.name] has been retrieved" level="INFO" doc:name="Logger"/>
+        <twitter:get-mentions config-ref="Twitter" count="1" doc:name="Get Mentions"/>
+        <twitter:update-status config-ref="Twitter" status="Thanks for your mention #[payload.get(0).user.name]" doc:name="Update Status"/>
+        <json:object-to-json-transformer doc:name="Object to JSON"/>
+    </flow>
+    <flow name="twitter-demoFlow2" doc:name="twitter-demoFlow2">
+        <http:inbound-endpoint exchange-pattern="request-response" host="localhost" port="8081" path="twitter-authorize" doc:name="HTTP"/>
+        <twitter:authorize config-ref="Twitter" doc:name="Authorize"></twitter:authorize>
+    </flow>
+</mule>
